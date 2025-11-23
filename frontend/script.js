@@ -1,7 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
 
     // ⚠️ IMPORTANT: UPDATE THIS WITH YOUR RENDER URL
-    const API_BASE_URL = "http://127.0.0.1:5001";
+    const API_BASE_URL = "https://desi-scribe2-0.onrender.com/";
 
     // --- 1. DOM ELEMENTS ---
     const describeBtn = document.getElementById("desiDescribeBtn");
