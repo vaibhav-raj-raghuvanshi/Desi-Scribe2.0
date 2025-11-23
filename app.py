@@ -15,20 +15,11 @@ app = Flask(__name__)
 CORS(app)
 
 # --- CONFIGURATION ---
-# Load token from Environment Variable (Set this in Render Dashboard)
-
-# Load the token from the environment variables
 HF_TOKEN = os.getenv("HF_TOKEN")
-
-# Optional: Add a check to warn you if it's missing
 if not HF_TOKEN:
-    print("⚠️ WARNING: No HF_TOKEN found. The app may crash.")
+    print("⚠️ WARNING: No HF_TOKEN found.")
 
-
-# 1. Text Client (Qwen 2.5)
 text_client = InferenceClient(model="Qwen/Qwen2.5-72B-Instruct", token=HF_TOKEN)
-
-# 2. Image Client (SDXL)
 image_client = InferenceClient(model="stabilityai/stable-diffusion-xl-base-1.0", token=HF_TOKEN)
 
 # --- HELPERS ---
@@ -49,103 +40,125 @@ def enhance_image_prompt(business, desc, tone):
     elif "Humorous" in tone: style += " Playful, bright lighting, fun props."
     return f"{base} {style}"
 
-# --- SMART LAYOUT ENGINE (Post vs Story) ---
+# --- SMART LAYOUT ENGINE ---
 def create_social_layout(img, business, slogan, format_type):
-    # Load Fonts
+    # UPDATED: Larger Font Sizes
     try:
-        title_font = ImageFont.truetype("font.ttf", 80)
-        slogan_font = ImageFont.truetype("font.ttf", 45)
-        small_font = ImageFont.truetype("font.ttf", 30)
+        title_font = ImageFont.truetype("font.ttf", 130) # Was 80
+        slogan_font = ImageFont.truetype("font.ttf", 80) # Was 45
+        small_font = ImageFont.truetype("font.ttf", 50)  # Was 30
     except:
         title_font = ImageFont.load_default()
         slogan_font = ImageFont.load_default()
         small_font = ImageFont.load_default()
 
     if format_type == "Story":
-        # --- INSTAGRAM STORY LAYOUT (9:16) ---
+        # 9:16 Layout
         width, height = 1080, 1920
         canvas = Image.new('RGB', (width, height), (0,0,0))
         
-        # 1. Create Blurred Background
         bg = img.resize((width + 200, height + 200))
         bg = bg.filter(ImageFilter.GaussianBlur(radius=30))
-        
-        # Center crop background
         left = (bg.width - width)/2
         top = (bg.height - height)/2
         bg = bg.crop((left, top, left + width, top + height))
         
-        # Darken background
-        overlay = Image.new('RGBA', bg.size, (0,0,0,100))
+        overlay = Image.new('RGBA', bg.size, (0,0,0,120)) # Slightly darker bg for contrast
         bg.paste(overlay, (0,0), overlay)
         canvas.paste(bg, (0,0))
 
-        # 2. Place Main Image in Center
         img_w, img_h = 900, 900
         main_img = img.resize((img_w, img_h))
-        # Simple white border
         border = Image.new('RGB', (img_w+20, img_h+20), (255,255,255))
         canvas.paste(border, (90, 500)) 
         canvas.paste(main_img, (100, 510))
 
         draw = ImageDraw.Draw(canvas)
-
-        # 3. Text (Top)
+        
+        # Title
         bbox = draw.textbbox((0, 0), business.upper(), font=title_font)
         text_width = bbox[2] - bbox[0]
-        draw.text(((width - text_width)/2, 250), business.upper(), font=title_font, fill="#FFD700")
+        # Ensure title fits (if too wide, naive scaling isn't here, but centering works)
+        draw.text(((width - text_width)/2, 200), business.upper(), font=title_font, fill="#FFD700")
 
-        # 4. Slogan (Bottom)
-        lines = textwrap.wrap(slogan, width=30)
+        # Slogan (Wrapped tighter because font is huge)
+        lines = textwrap.wrap(slogan, width=20) # Reduced width from 30 to 20
         y_text = 1500
         for line in lines:
             bbox = draw.textbbox((0, 0), line, font=slogan_font)
             line_width = bbox[2] - bbox[0]
             draw.text(((width - line_width)/2, y_text), line, font=slogan_font, fill="white")
-            y_text += 60
+            y_text += 90 # Increased line height spacing
             
-        # 5. Swipe Up Hint
-        draw.text(((width - 200)/2, 1800), "^ SWIPE UP ^", font=small_font, fill="#cccccc")
-
+        draw.text(((width - 300)/2, 1800), "^ SWIPE UP ^", font=small_font, fill="#cccccc")
         return canvas
 
     else:
-        # --- SQUARE / STANDARD POST ---
+        # Square Layout
         draw = ImageDraw.Draw(img)
         w, h = img.size
         
-        # Dark Overlay for readability
+        # Bigger dark overlay to fit bigger text
         overlay = Image.new('RGBA', img.size, (0,0,0,0))
         d = ImageDraw.Draw(overlay)
-        d.rectangle([(0, h - 220), (w, h)], fill=(0, 0, 0, 180))
-        d.rectangle([(0, 0), (w, 120)], fill=(0, 0, 0, 150))
+        d.rectangle([(0, h - 300), (w, h)], fill=(0, 0, 0, 180)) # Taller box
+        d.rectangle([(0, 0), (w, 180)], fill=(0, 0, 0, 150))     # Taller box
         img = Image.alpha_composite(img.convert('RGBA'), overlay)
         draw = ImageDraw.Draw(img)
 
-        # Business Name
+        # Title
         bbox = draw.textbbox((0, 0), business.upper(), font=title_font)
         text_width = bbox[2] - bbox[0]
-        draw.text(((w - text_width) / 2, 20), business.upper(), font=title_font, fill="#FFD700")
+        draw.text(((w - text_width) / 2, 30), business.upper(), font=title_font, fill="#FFD700")
 
         # Slogan
-        lines = textwrap.wrap(slogan, width=40)
-        y_text = h - 180
+        lines = textwrap.wrap(slogan, width=25) # Reduced width from 40 to 25
+        y_text = h - 250
         for line in lines:
             bbox = draw.textbbox((0, 0), line, font=slogan_font)
             line_width = bbox[2] - bbox[0]
             draw.text(((w - line_width) / 2, y_text), line, font=slogan_font, fill="white")
-            y_text += 55
-            
+            y_text += 85
         return img
 
-# --- ROBUST VISION QUERY ---
+def draw_text_on_image(img, business_name, slogan):
+    # Legacy function for 'Poster' mode, also updated
+    draw = ImageDraw.Draw(img)
+    width, height = img.size
+    
+    try:
+        title_font = ImageFont.truetype("font.ttf", 130)
+        slogan_font = ImageFont.truetype("font.ttf", 80)
+    except:
+        title_font = ImageFont.load_default()
+        slogan_font = ImageFont.load_default()
+
+    overlay = Image.new('RGBA', img.size, (0,0,0,0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    overlay_draw.rectangle([(0, height - 300), (width, height)], fill=(0, 0, 0, 180))
+    overlay_draw.rectangle([(0, 0), (width, 180)], fill=(0, 0, 0, 150))
+    img = Image.alpha_composite(img.convert('RGBA'), overlay)
+    draw = ImageDraw.Draw(img)
+
+    bbox = draw.textbbox((0, 0), business_name.upper(), font=title_font)
+    text_w = bbox[2] - bbox[0]
+    draw.text(((width - text_w) / 2, 30), business_name.upper(), font=title_font, fill="#FFD700")
+
+    lines = textwrap.wrap(slogan, width=25)
+    y_text = height - 250
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=slogan_font)
+        line_w = bbox[2] - bbox[0]
+        draw.text(((width - line_w) / 2, y_text), line, font=slogan_font, fill="white")
+        y_text += 85
+
+    return img
+
 def query_vision_api(img_bytes, token):
     model = "Salesforce/blip-image-captioning-base"
     api_url = f"https://router.huggingface.co/hf-inference/models/{model}"
     headers = {"Authorization": f"Bearer {token}"}
-    
     for attempt in range(3):
-        print(f"--- Vision Attempt {attempt+1} ---")
         try:
             response = requests.post(api_url, headers=headers, data=img_bytes)
             if response.status_code == 200:
@@ -153,17 +166,15 @@ def query_vision_api(img_bytes, token):
                 if isinstance(result, list) and len(result) > 0:
                     return result[0].get('generated_text', 'A product image')
             elif response.status_code == 503:
-                print("Model loading... waiting 2s")
                 time.sleep(2)
                 continue
             else:
-                print(f"Vision Failed: {response.status_code}")
+                print(f"Vision Fail: {response.status_code}")
                 break
         except: break
     return None
 
 # --- ROUTES ---
-
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({"status": "active", "message": "Desi-Scribe Backend is Live!"})
@@ -183,8 +194,6 @@ def analyze_image():
         caption = query_vision_api(img_bytes, HF_TOKEN)
         if not caption: caption = "A product image"
 
-        print(f"Vision saw: {caption}")
-
         guess_prompt = f"Based on: '{caption}', guess a short Business Name (max 3 words) and Tone. Format: Name | Tone"
         guess_res = text_client.chat_completion(messages=[{"role": "user", "content": guess_prompt}], max_tokens=50)
         guess_text = guess_res.choices[0].message.content.strip()
@@ -201,11 +210,8 @@ def generate_slogan():
     try:
         data = request.get_json()
         lang = data.get('language', 'English')
-        
         prompt = (f"Write a {data.get('ad_type')} slogan for {data.get('business_type')} "
-                  f"({data.get('product_description')}) in {lang} language. "
-                  f"Output ONLY the slogan in {lang}.")
-                  
+                  f"({data.get('product_description')}) in {lang} language. Output ONLY the slogan.")
         res = text_client.chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=60)
         return jsonify({"status": "success", "slogan": clean_text(res.choices[0].message.content)})
     except Exception as e:
@@ -219,18 +225,18 @@ def generate_poster():
         desc = data.get('product_description')
         tone = data.get('ad_type')
         lang = data.get('language', 'English')
-        fmt = data.get('format', 'Square') # Post vs Story
+        fmt = data.get('format', 'Square')
 
-        # 1. Slogan
+        # Slogan
         slogan_prompt = f"Write a catchy 5-word slogan for {b_type} in {lang} language."
         slogan_res = text_client.chat_completion(messages=[{"role": "user", "content": slogan_prompt}], max_tokens=40)
         slogan = clean_text(slogan_res.choices[0].message.content)
 
-        # 2. Image
+        # Image
         image_prompt = enhance_image_prompt(b_type, desc, tone)
         img = image_client.text_to_image(image_prompt)
 
-        # 3. Smart Layout (Handles Story/Post logic)
+        # Layout
         final_img = create_social_layout(img, b_type, slogan, fmt)
 
         buffered = io.BytesIO()
